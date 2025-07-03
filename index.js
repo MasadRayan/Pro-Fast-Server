@@ -40,6 +40,7 @@ async function run() {
         const paymentCollection = client.db("parcelDB").collection('payments');
         const trackingCollection = client.db("parcelDB").collection("tracking");
         const usersCollections = client.db("parcelDB").collection('users')
+        const ridersCollections = client.db("parcelDB").collection("riders")
 
         // custome middleware
         const verifyFBToken = async (req, res, next) => {
@@ -186,6 +187,73 @@ async function run() {
                 res.status(500).send({ error: err.message });
             }
         });
+
+        app.post('/riders', async (req, res) => {
+            const rider = req.body;
+            const result = await ridersCollections.insertOne(rider);
+            res.send(result)
+        })
+
+        app.get('/riders/pending', async (req, res) => {
+            try {
+                const pendingRiders = await ridersCollections.find({ status: "pending" }).toArray();
+                res.send(pendingRiders);
+            } catch (error) {
+                console.error("Error fetching pending riders:", error);
+                res.status(500).send({ message: "Internal server error" });
+            }
+        });
+
+        app.get('/riders/approved', async (req, res) => {
+            try {
+                const pendingRiders = await ridersCollections.find({ status: "approved" }).toArray();
+                res.send(pendingRiders);
+            } catch (error) {
+                console.error("Error fetching pending riders:", error);
+                res.status(500).send({ message: "Internal server error" });
+            }
+        });
+
+        app.patch("/riders/:id/approve", async (req, res) => {
+            const id = req.params.id;
+
+            try {
+                const result = await ridersCollections.updateOne(
+                    { _id: new ObjectId(id), status: "pending" },
+                    { $set: { status: "approved" } }
+                );
+
+                if (result.modifiedCount === 0) {
+                    return res.status(404).send({ message: "Rider not found or already approved" });
+                }
+
+                res.send({ message: "Rider approved successfully" });
+
+            } catch (err) {
+                res.status(500).send({ error: err.message });
+            }
+        });
+        app.patch("/riders/:id/deactivate", async (req, res) => {
+            const id = req.params.id;
+
+            try {
+                const result = await ridersCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: { status: "deactivated" } }
+                );
+
+                if (result.modifiedCount === 0) {
+                    return res.status(404).send({ message: "Rider not found or already deactivated" });
+                }
+
+                res.send({ message: "Rider deactivated successfully" });
+
+            } catch (err) {
+                res.status(500).send({ error: err.message });
+            }
+        });
+
+
 
         app.post("/tracking", async (req, res) => {
             const { parcelId, trackingId, status, message, note = '' } = req.body;
