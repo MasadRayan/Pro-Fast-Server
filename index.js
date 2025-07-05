@@ -42,7 +42,7 @@ async function run() {
         const usersCollections = client.db("parcelDB").collection('users')
         const ridersCollections = client.db("parcelDB").collection("riders")
 
-        // custome middleware
+        // custome middleware******************
         const verifyFBToken = async (req, res, next) => {
             const authHeader = req.headers.authorization;
 
@@ -59,12 +59,14 @@ async function run() {
 
             try {
                 const decoded = await admin.auth().verifyIdToken(token);
-                req.decoded = decoded; // contains uid, email, etc.
+                req.decoded = decoded;
                 next();
             } catch (err) {
                 return res.status(403).send({ message: "Forbiddem Access" });
             }
         };
+
+        // UserApi *******************
 
         app.post('/users', async (req, res) => {
             const email = req.body.email;
@@ -77,9 +79,82 @@ async function run() {
             res.send(result)
         })
 
+        app.get('/users/search', async (req, res) => {
+            const email = req.query.email;
+            if (!email) {
+                return res.status(400).send({ error: 'Email query parameter is required' });
+            }
+            try {
+                const users = await usersCollections
+                    .find({ email: { $regex: email, $options: 'i' } }) // case-insensitive partial
+                    .limit(10)
+                    .toArray();
+
+                if (users.length === 0) {
+                    return res.status(404).send({ error: 'No users found' });
+                }
+                res.send(users);
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
+
+        app.get('/users/:email/role', async (req, res) => {
+            const email = req.params.email;
+
+            if (!email) {
+                return res.status(400).send({ error: 'Email parameter is required' });
+            }
+
+            try {
+                const user = await usersCollections.findOne(
+                    { email: { $regex: `^${email}$`, $options: 'i' } },  // case-insensitive
+                    { projection: { role: 1, _id: 0 } }
+                );
+
+                if (!user) {
+                    return res.status(404).send({ error: 'User not found' });
+                }
+
+                res.send({ role: user.role || 'user' });
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
+
+
+        app.patch('/users/:id/role', async (req, res) => {
+            const id = req.params.id;
+            const { role } = req.body;
+
+            if (!role) {
+                return res.status(400).send({ error: 'Role is required in request body' });
+            }
+
+            try {
+                const result = await usersCollections.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: { role } }
+                );
+
+                if (result.modifiedCount === 0) {
+                    return res.status(404).send({ error: 'User not found or role unchanged' });
+                }
+
+                res.send({ message: `User role updated to ${role}` });
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
+
+
+        // parcel api***************************
+
         app.post("/parcels", async (req, res) => {
             const parcel = req.body;
-            //   parcel.status = "Pending Pickup";
             const result = await parcelCollection.insertOne(parcel);
             res.send(result);
         });
@@ -125,7 +200,7 @@ async function run() {
         });
 
 
-
+        // payment api*******************************
         app.get("/payments", verifyFBToken, async (req, res) => {
 
             try {
@@ -138,7 +213,7 @@ async function run() {
                 const query = email ? { email } : {};
                 const payments = await paymentCollection
                     .find(query)
-                    .sort({ createdAt: -1 })  // latest on top
+                    .sort({ createdAt: -1 })
                     .toArray();
 
                 res.send(payments);
@@ -151,7 +226,6 @@ async function run() {
             const { parcelId, email, amount, transactionId } = req.body;
 
             try {
-                // 1. Mark parcel as Paid
                 const updateResult = await parcelCollection.updateOne(
                     { _id: new ObjectId(parcelId) },
                     {
@@ -165,7 +239,6 @@ async function run() {
                     return res.status(404).send({ message: "Parcel not found or already paid" });
                 }
 
-                // 2. Add to payments history
                 const paymentRecord = {
                     parcelId,
                     email,
@@ -188,6 +261,9 @@ async function run() {
             }
         });
 
+
+
+        // rider Api***********************************
         app.post('/riders', async (req, res) => {
             const rider = req.body;
             const result = await ridersCollections.insertOne(rider);
@@ -204,6 +280,24 @@ async function run() {
             }
         });
 
+        app.delete("/riders/:id", async (req, res) => {
+            const id = req.params.id;
+
+            try {
+                const result = await ridersCollections.deleteOne({ _id: new ObjectId(id) });
+
+                if (result.deletedCount === 0) {
+                    return res.status(404).send({ message: "Rider not found" });
+                }
+
+                res.send({ message: "Rider rejected & removed successfully" });
+
+            } catch (err) {
+                res.status(500).send({ error: err.message });
+            }
+        });
+
+
         app.get('/riders/approved', async (req, res) => {
             try {
                 const pendingRiders = await ridersCollections.find({ status: "approved" }).toArray();
@@ -214,31 +308,43 @@ async function run() {
             }
         });
 
-        app.patch("/riders/:id/approve", async (req, res) => {
+        app.patch("/riders/:id/status", async (req, res) => {
             const id = req.params.id;
+            const { status, email } = req.body;
+
+            if (!status) {
+                return res.status(400).send({ message: "Status is required" });
+            }
+
+            const filter = { _id: new ObjectId(id), status: "pending" };
+            const update = { $set: { status } };
 
             try {
-                const result = await ridersCollections.updateOne(
-                    { _id: new ObjectId(id), status: "pending" },
-                    { $set: { status: "approved" } }
-                );
+                const result = await ridersCollections.updateOne(filter, update);
 
-                if (result.modifiedCount === 0) {
-                    return res.status(404).send({ message: "Rider not found or already approved" });
+                // update the role of a rider
+                if (status === 'approved' && email) {
+                    const useQuery = { email: { $regex: `^${email}$`, $options: "i" } };
+
+                    const roleResult = await usersCollections.updateOne(useQuery, { $set: { role: 'rider' } });
+
+                    console.log("Role update result:", roleResult);
                 }
 
-                res.send({ message: "Rider approved successfully" });
+                res.send(result);
 
             } catch (err) {
+                console.error(err);
                 res.status(500).send({ error: err.message });
             }
         });
+
         app.patch("/riders/:id/deactivate", async (req, res) => {
             const id = req.params.id;
 
             try {
-                const result = await ridersCollection.updateOne(
-                    { _id: new ObjectId(id) },
+                const result = await ridersCollections.updateOne(
+                    { _id: new ObjectId(id), status: 'approved' },
                     { $set: { status: "deactivated" } }
                 );
 
@@ -254,7 +360,7 @@ async function run() {
         });
 
 
-
+        // Tracking Api*************************
         app.post("/tracking", async (req, res) => {
             const { parcelId, trackingId, status, message, note = '' } = req.body;
 
@@ -279,6 +385,7 @@ async function run() {
         });
 
 
+        // Payment Api*****************************
         app.post('/create-payment-intent', async (req, res) => {
             const amountIncents = req.body.amountInCents
             try {
