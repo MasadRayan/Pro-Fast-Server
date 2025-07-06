@@ -66,6 +66,18 @@ async function run() {
             }
         };
 
+
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email }
+            const user = await usersCollections.findOne(query);
+            if (!user || user.role !== 'admin') {
+                return res.status(403).send({ message: "Forbiddem Access" });
+            }
+            next();
+        }
+
+
         // UserApi *******************
 
         app.post('/users', async (req, res) => {
@@ -125,7 +137,7 @@ async function run() {
         });
 
 
-        app.patch('/users/:id/role', async (req, res) => {
+        app.patch('/users/:id/role',verifyFBToken, verifyAdmin,  async (req, res) => {
             const id = req.params.id;
             const { role } = req.body;
 
@@ -270,7 +282,7 @@ async function run() {
             res.send(result)
         })
 
-        app.get('/riders/pending', async (req, res) => {
+        app.get('/riders/pending', verifyFBToken, verifyAdmin, async (req, res) => {
             try {
                 const pendingRiders = await ridersCollections.find({ status: "pending" }).toArray();
                 res.send(pendingRiders);
@@ -298,7 +310,7 @@ async function run() {
         });
 
 
-        app.get('/riders/approved', async (req, res) => {
+        app.get('/riders/approved', verifyFBToken, verifyAdmin,  async (req, res) => {
             try {
                 const pendingRiders = await ridersCollections.find({ status: "approved" }).toArray();
                 res.send(pendingRiders);
