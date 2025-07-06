@@ -137,7 +137,7 @@ async function run() {
         });
 
 
-        app.patch('/users/:id/role',verifyFBToken, verifyAdmin,  async (req, res) => {
+        app.patch('/users/:id/role', verifyFBToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const { role } = req.body;
 
@@ -172,13 +172,24 @@ async function run() {
         });
 
         app.get("/parcels", verifyFBToken, async (req, res) => {
-            const email = req.query.email;
+            const { email, paymentStatus, deliveryStatus } = req.query;
 
-            if (req.decoded.email !== email) {
-                return res.status(403).send({ message: "Forbiddem Access" });
+            let query = {};
+
+            if (email) {
+                query = { email }
             }
 
-            const query = email ? { email } : {};
+            if (paymentStatus) {
+                query.paymentStatus = paymentStatus
+            }
+
+
+            if (deliveryStatus) {
+                query.deliveryStatus = deliveryStatus
+            }
+
+            console.log('from query', req.query, query);
 
             const parcels = await parcelCollection
                 .find(query)
@@ -200,7 +211,6 @@ async function run() {
             }
         });
 
-
         app.delete("/parcels/:id", async (req, res) => {
             const id = req.params.id;
             try {
@@ -210,6 +220,27 @@ async function run() {
                 res.status(500).send({ error: err.message });
             }
         });
+
+        app.patch('/parcels/:id/delivery-status', async (req, res) => {
+            const parcelId = req.params.id;
+            const { deliveryStatus } = req.body;
+
+            if (!deliveryStatus) {
+                return res.status(400).send({ error: "deliveryStatus is required" });
+            }
+
+            try {
+                const result = await parcelCollection.updateOne(
+                    { _id: new ObjectId(parcelId) },
+                    { $set: { deliveryStatus } }
+                );
+                res.send(result);
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ error: "Internal server error" });
+            }
+        });
+
 
 
         // payment api*******************************
@@ -310,7 +341,7 @@ async function run() {
         });
 
 
-        app.get('/riders/approved', verifyFBToken, verifyAdmin,  async (req, res) => {
+        app.get('/riders/approved', verifyFBToken, verifyAdmin, async (req, res) => {
             try {
                 const pendingRiders = await ridersCollections.find({ status: "approved" }).toArray();
                 res.send(pendingRiders);
@@ -368,6 +399,26 @@ async function run() {
 
             } catch (err) {
                 res.status(500).send({ error: err.message });
+            }
+        });
+
+        app.patch('/riders/:id/work-status', async (req, res) => {
+            const riderId = req.params.id;
+            const { workStatus } = req.body;
+
+            if (!workStatus) {
+                return res.status(400).send({ error: "workStatus is required" });
+            }
+
+            try {
+                const result = await ridersCollections.updateOne(
+                    { _id: new ObjectId(riderId) },
+                    { $set: { workStatus } }
+                );
+                res.send(result);
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ error: "Internal server error" });
             }
         });
 
