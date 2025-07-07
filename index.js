@@ -221,18 +221,18 @@ async function run() {
             }
         });
 
-        app.patch('/parcels/:id/delivery-status', async (req, res) => {
+        app.patch('/parcels/:id/update', async (req, res) => {
             const parcelId = req.params.id;
-            const { deliveryStatus } = req.body;
+            const updateFields = req.body;
 
-            if (!deliveryStatus) {
-                return res.status(400).send({ error: "deliveryStatus is required" });
+            if (!updateFields || Object.keys(updateFields).length === 0) {
+                return res.status(400).send({ error: "No fields provided to update." });
             }
 
             try {
                 const result = await parcelCollection.updateOne(
                     { _id: new ObjectId(parcelId) },
-                    { $set: { deliveryStatus } }
+                    { $set: updateFields }
                 );
                 res.send(result);
             } catch (err) {
