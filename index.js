@@ -198,6 +198,43 @@ async function run() {
             res.send(parcels);
         });
 
+
+        app.get('/parcels/rider', async (req, res) => {
+            const { riderEmail } = req.query;
+
+            const query = {};
+            if (riderEmail) {
+                // query.riderEmail = { $regex: `${riderEmail.trim()}`, $options: "i" };
+                // simpler regex
+            }
+            query.deliveryStatus = { $in: ["rider_assigned", "in_transit"] };
+
+
+            try {
+                const parcels = await parcelCollection.find(query).sort({ createdAt: -1 }).toArray();
+                res.send(parcels);
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ error: "Internal server error" });
+            }
+        });
+
+        app.get('/parcels/delivered', async (req, res) => {
+            try {
+                const parcels = await parcelCollection.find({
+                    deliveryStatus: "Delivered"
+                })
+                    .sort({ createdAt: -1 })
+                    .toArray();
+
+                res.send(parcels);
+            } catch (err) {
+                console.error("Error fetching delivered parcels:", err);
+                res.status(500).send({ error: "Internal server error" });
+            }
+        });
+
+
         app.get("/parcels/:id", verifyFBToken, async (req, res) => {
             const id = req.params.id;
             try {
@@ -210,6 +247,9 @@ async function run() {
                 res.status(500).send({ error: err.message });
             }
         });
+
+
+
 
         app.delete("/parcels/:id", async (req, res) => {
             const id = req.params.id;
